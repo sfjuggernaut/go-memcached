@@ -113,6 +113,9 @@ func (server *Server) handleConnection(conn net.Conn) {
 
 		default:
 			log.Println("handleConnection: unsupported cmd:", cmd)
+			reply = "ERROR\r\n"
+			writer.WriteString(reply)
+			writer.Flush()
 		}
 	}
 }
