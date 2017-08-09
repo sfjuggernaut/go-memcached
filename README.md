@@ -15,3 +15,9 @@ A memcache server written in Go.
 `
 $ go test ./...
 `
+
+## Update dependencies via [godep](godephttps://github.com/tools/godep)
+
+`
+$ godep save ./...
+`
