@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 )
@@ -16,6 +17,8 @@ func TestBasicTextProtocol(t *testing.T) {
 
 	address := fmt.Sprintf(":%d", port)
 	client := memcache.New(address)
+
+	waitForServerToStart()
 
 	key := "k1"
 	value := "wombat"
@@ -59,6 +62,8 @@ func TestEviction(t *testing.T) {
 	address := fmt.Sprintf(":%d", port)
 	client := memcache.New(address)
 
+	waitForServerToStart()
+
 	// insert up to eviction size number of elements
 	for i := 0; i < size; i++ {
 		k := strconv.Itoa(i)
@@ -88,4 +93,9 @@ func TestEviction(t *testing.T) {
 		t.Errorf("Get of key (%s) should have returned a memcache miss\n", k)
 	}
 
+}
+
+// wait a little bit for the server to be able to receive connections
+func waitForServerToStart() {
+	time.Sleep(50 * time.Millisecond)
 }
