@@ -9,3 +9,9 @@ A memcache server written in Go.
 - GET
 - SET
 - DELETE
+
+## Testing
+
+`
+$ go test ./...
+`

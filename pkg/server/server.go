@@ -13,8 +13,9 @@ const (
 )
 
 type Server struct {
-	port int
-	LRU  *cache.LRU
+	listener net.Listener
+	port     int
+	LRU      *cache.LRU
 }
 
 func New(port, size int) *Server {
@@ -22,13 +23,14 @@ func New(port, size int) *Server {
 	return &Server{port: port, LRU: lru}
 }
 
-func (server *Server) Start() {
-	address := fmt.Sprintf(":%d", server.port)
+func (s *Server) Start() {
+	address := fmt.Sprintf(":%d", s.port)
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer l.Close()
+	s.listener = l
+	defer s.Stop()
 
 	for {
 		// wait for a new connection
@@ -39,6 +41,10 @@ func (server *Server) Start() {
 		}
 
 		// handle the connection in a new goroutine
-		go server.handleConnection(conn)
+		go s.handleConnection(conn)
 	}
+}
+
+func (s *Server) Stop() {
+	s.listener.Close()
 }
