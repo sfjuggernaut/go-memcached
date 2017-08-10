@@ -77,6 +77,13 @@ func (server *Server) handleConnection(conn net.Conn) {
 			break
 		}
 
+		if len(key) > maxKeyLength {
+			reply = "CLIENT_ERROR key is too long (max is 250 bytes)\r\n"
+			writer.WriteString(reply)
+			writer.Flush()
+			continue
+		}
+
 		switch cmd {
 		case cmdGet, cmdGets:
 			value, err := server.LRU.Get(key)

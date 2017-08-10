@@ -95,6 +95,39 @@ func TestEviction(t *testing.T) {
 
 }
 
+func TestKeys(t *testing.T) {
+	size := 10
+	port := 44444
+	srv := New(port, size)
+	go srv.Start()
+	defer srv.Stop()
+
+	address := fmt.Sprintf(":%d", port)
+	client := memcache.New(address)
+
+	waitForServerToStart()
+
+	// ensure key of maxKeyLength is valid
+	bytes := make([]byte, maxKeyLength)
+	for i := 0; i < maxKeyLength; i++ {
+		bytes[i] = 'a'
+	}
+
+	if err := client.Set(&memcache.Item{Key: string(bytes), Value: []byte("value")}); err != nil {
+		t.Errorf("Set of key with len (%d) should not have received error: %s\n", len(string(bytes)), err)
+	}
+
+	// ensure key one char longer than maxKeyLength is invalid
+	bytes = make([]byte, maxKeyLength+1)
+	for i := 0; i < maxKeyLength+1; i++ {
+		bytes[i] = 'a'
+	}
+
+	if err := client.Set(&memcache.Item{Key: string(bytes), Value: []byte("value")}); err == nil {
+		t.Errorf("Set of key with len (%d) should have received error\n", len(string(bytes)))
+	}
+}
+
 // wait a little bit for the server to be able to receive connections
 func waitForServerToStart() {
 	time.Sleep(50 * time.Millisecond)
