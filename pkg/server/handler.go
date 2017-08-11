@@ -21,6 +21,17 @@ const (
 	cmdSet    = "set"
 )
 
+const (
+	endOfLine      = "\r\n"
+	replyDeleted   = "DELETED\r\n"
+	replyEnd       = "END\r\n"
+	replyError     = "ERROR\r\n"
+	replyExists    = "EXISTS\r\n"
+	replyNotFound  = "NOT_FOUND\r\n"
+	replyNotStored = "NOT_STORED\r\n"
+	replyStored    = "STORED\r\n"
+)
+
 // "flags" is 32bits to support memcached 1.2.1
 func getCmdInfo(scanner *bufio.Scanner) (cmd string, key string, flags uint32, expTime int32, n int, cas uint64, err error) {
 	scanner.Scan()
@@ -105,18 +116,18 @@ func (server *Server) handleConnection(conn net.Conn) {
 		case cmdCas:
 			_, entryCas, err := server.LRU.Get(key)
 			if err == cache.ErrCacheMiss {
-				reply = "NOT_FOUND\r\n"
+				reply = replyNotFound
 			} else if err != nil {
-				reply = "NOT_STORED\r\n"
+				reply = replyNotStored
 			} else if cas != entryCas {
-				reply = "EXISTS\r\n"
+				reply = replyExists
 			} else {
 				value, err := getValue(scanner, n)
 				if err != nil {
-					reply = "NOT_STORED\r\n"
+					reply = replyNotStored
 				} else {
 					server.LRU.Add(key, value)
-					reply = "STORED\r\n"
+					reply = replyStored
 				}
 			}
 			writer.WriteString(reply)
@@ -125,10 +136,10 @@ func (server *Server) handleConnection(conn net.Conn) {
 		case cmdGet:
 			value, _, err := server.LRU.Get(key)
 			if err != nil {
-				reply = "END\r\n"
+				reply = replyEnd
 			} else {
 				// XXX hard-coding flags to 0 now
-				reply = fmt.Sprintf("VALUE %s %d %d\r\n%s\r\nEND\r\n", key, 0, len(value), value)
+				reply = fmt.Sprintf("VALUE %s %d %d%s%s%s%s", key, 0, len(value), endOfLine, value, endOfLine, replyEnd)
 			}
 			writer.WriteString(reply)
 			writer.Flush()
@@ -136,10 +147,10 @@ func (server *Server) handleConnection(conn net.Conn) {
 		case cmdGets:
 			value, cas, err := server.LRU.Get(key)
 			if err != nil {
-				reply = "END\r\n"
+				reply = replyEnd
 			} else {
 				// XXX hard-coding flags to 0 now
-				reply = fmt.Sprintf("VALUE %s %d %d %d\r\n%s\r\nEND\r\n", key, 0, len(value), cas, value)
+				reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s%s", key, 0, len(value), cas, endOfLine, value, endOfLine, replyEnd)
 			}
 			writer.WriteString(reply)
 			writer.Flush()
@@ -147,10 +158,10 @@ func (server *Server) handleConnection(conn net.Conn) {
 		case cmdSet:
 			value, err := getValue(scanner, n)
 			if err != nil {
-				reply = "NOT_STORED\r\n"
+				reply = replyNotStored
 			} else {
 				server.LRU.Add(key, value)
-				reply = "STORED\r\n"
+				reply = replyStored
 			}
 			writer.WriteString(reply)
 			writer.Flush()
@@ -158,16 +169,16 @@ func (server *Server) handleConnection(conn net.Conn) {
 		case cmdDelete:
 			err := server.LRU.Delete(key)
 			if err != nil {
-				reply = "NOT_FOUND\r\n"
+				reply = replyNotFound
 			} else {
-				reply = "DELETED\r\n"
+				reply = replyDeleted
 			}
 			writer.WriteString(reply)
 			writer.Flush()
 
 		default:
 			log.Println("handleConnection: unsupported cmd:", cmd)
-			reply = "ERROR\r\n"
+			reply = replyError
 			writer.WriteString(reply)
 			writer.Flush()
 		}
