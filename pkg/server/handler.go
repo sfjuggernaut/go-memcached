@@ -18,6 +18,7 @@ const (
 	cmdDelete = "delete"
 	cmdGet    = "get"
 	cmdGets   = "gets"
+	cmdQuit   = "quit"
 	cmdSet    = "set"
 )
 
@@ -104,6 +105,11 @@ func (server *Server) handleConnection(conn net.Conn) {
 			continue
 		}
 
+		if cmd == cmdQuit {
+			// close connection for the client
+			break
+		}
+
 		// XXX need to support multiple keys
 		if len(key) > maxKeyLength {
 			reply = "CLIENT_ERROR key is too long (max is 250 bytes)\r\n"
@@ -129,6 +135,16 @@ func (server *Server) handleConnection(conn net.Conn) {
 					server.LRU.Add(key, value, flags)
 					reply = replyStored
 				}
+			}
+			writer.WriteString(reply)
+			writer.Flush()
+
+		case cmdDelete:
+			err := server.LRU.Delete(key)
+			if err != nil {
+				reply = replyNotFound
+			} else {
+				reply = replyDeleted
 			}
 			writer.WriteString(reply)
 			writer.Flush()
@@ -160,16 +176,6 @@ func (server *Server) handleConnection(conn net.Conn) {
 			} else {
 				server.LRU.Add(key, value, flags)
 				reply = replyStored
-			}
-			writer.WriteString(reply)
-			writer.Flush()
-
-		case cmdDelete:
-			err := server.LRU.Delete(key)
-			if err != nil {
-				reply = replyNotFound
-			} else {
-				reply = replyDeleted
 			}
 			writer.WriteString(reply)
 			writer.Flush()
