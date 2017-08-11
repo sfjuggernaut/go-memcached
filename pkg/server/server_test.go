@@ -22,9 +22,11 @@ func TestBasicTextProtocol(t *testing.T) {
 
 	key := "k1"
 	value := "wombat"
+	flags := uint32(13)
 
 	// set
-	if err := client.Set(&memcache.Item{Key: key, Value: []byte(value)}); err != nil {
+	item := &memcache.Item{Key: key, Value: []byte(value), Flags: flags}
+	if err := client.Set(item); err != nil {
 		t.Errorf("Set of key (%s) got unexpected error: %s\n", key, err)
 	}
 
@@ -38,6 +40,9 @@ func TestBasicTextProtocol(t *testing.T) {
 	}
 	if string(it.Value) != value {
 		t.Errorf("Get of key (%s) got unexpected value: %s\n", key, it.Value)
+	}
+	if it.Flags != flags {
+		t.Errorf("Get of key (%s) expected flags to be (%d) but received (%d)\n", key, flags, it.Flags)
 	}
 
 	// delete

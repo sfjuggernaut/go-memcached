@@ -87,7 +87,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 	for {
 		scanner := bufio.NewScanner(reader)
 
-		cmd, key, _, _, n, cas, err := getCmdInfo(scanner)
+		cmd, key, flags, _, n, cas, err := getCmdInfo(scanner)
 		if err == io.EOF {
 			// client closed the connection
 			log.Printf("handleConnection: client (%s) closed the connection\n", conn.RemoteAddr())
@@ -114,7 +114,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 
 		switch cmd {
 		case cmdCas:
-			_, entryCas, err := server.LRU.Get(key)
+			_, _, entryCas, err := server.LRU.Get(key)
 			if err == cache.ErrCacheMiss {
 				reply = replyNotFound
 			} else if err != nil {
@@ -126,7 +126,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 				if err != nil {
 					reply = replyNotStored
 				} else {
-					server.LRU.Add(key, value)
+					server.LRU.Add(key, value, flags)
 					reply = replyStored
 				}
 			}
@@ -134,23 +134,21 @@ func (server *Server) handleConnection(conn net.Conn) {
 			writer.Flush()
 
 		case cmdGet:
-			value, _, err := server.LRU.Get(key)
+			value, flags, _, err := server.LRU.Get(key)
 			if err != nil {
 				reply = replyEnd
 			} else {
-				// XXX hard-coding flags to 0 now
-				reply = fmt.Sprintf("VALUE %s %d %d%s%s%s%s", key, 0, len(value), endOfLine, value, endOfLine, replyEnd)
+				reply = fmt.Sprintf("VALUE %s %d %d%s%s%s%s", key, flags, len(value), endOfLine, value, endOfLine, replyEnd)
 			}
 			writer.WriteString(reply)
 			writer.Flush()
 
 		case cmdGets:
-			value, cas, err := server.LRU.Get(key)
+			value, flags, cas, err := server.LRU.Get(key)
 			if err != nil {
 				reply = replyEnd
 			} else {
-				// XXX hard-coding flags to 0 now
-				reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s%s", key, 0, len(value), cas, endOfLine, value, endOfLine, replyEnd)
+				reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s%s", key, flags, len(value), cas, endOfLine, value, endOfLine, replyEnd)
 			}
 			writer.WriteString(reply)
 			writer.Flush()
@@ -160,7 +158,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 			if err != nil {
 				reply = replyNotStored
 			} else {
-				server.LRU.Add(key, value)
+				server.LRU.Add(key, value, flags)
 				reply = replyStored
 			}
 			writer.WriteString(reply)

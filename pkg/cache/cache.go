@@ -28,19 +28,21 @@ type LRU struct {
 type entry struct {
 	key   string
 	value string
+	flags uint32
 	cas   uint64
 }
 
+// NewLRU returns a new LRU object.
 func NewLRU(size int) *LRU {
 	return &LRU{size: size, evictList: list.New(), elements: make(map[string]*list.Element)}
 }
 
 // Add inserts or updates the element for the specified key.
-func (lru *LRU) Add(key, value string) {
+func (lru *LRU) Add(key, value string, flags uint32) {
 	if e, ok := lru.elements[key]; ok {
-		lru.updateElement(e, value)
+		lru.updateElement(e, value, flags)
 	} else {
-		lru.addElement(key, value)
+		lru.addElement(key, value, flags)
 	}
 	lru.checkSize()
 }
@@ -48,14 +50,14 @@ func (lru *LRU) Add(key, value string) {
 // Get retrieves the value and cas token stored in the element
 // for the specified key.
 // Returns error if element is not found.
-func (lru *LRU) Get(key string) (string, uint64, error) {
+func (lru *LRU) Get(key string) (string, uint32, uint64, error) {
 	e, ok := lru.elements[key]
 	if !ok {
-		return "", 0, ErrCacheMiss
+		return "", 0, 0, ErrCacheMiss
 	}
 	lru.refreshElement(e)
 
-	return e.Value.(*entry).value, e.Value.(*entry).cas, nil
+	return e.Value.(*entry).value, e.Value.(*entry).flags, e.Value.(*entry).cas, nil
 }
 
 // Delete removes the element for the specified key.
@@ -88,14 +90,15 @@ func (lru *LRU) getNewCasToken() uint64 {
 }
 
 // add element to cache and update LRU for this element
-func (lru *LRU) addElement(key, value string) {
-	e := lru.evictList.PushFront(&entry{key: key, value: value, cas: lru.getNewCasToken()})
+func (lru *LRU) addElement(key, value string, flags uint32) {
+	e := lru.evictList.PushFront(&entry{key: key, value: value, flags: flags, cas: lru.getNewCasToken()})
 	lru.elements[key] = e
 }
 
 // update element to cache and update LRU for this element
-func (lru *LRU) updateElement(e *list.Element, value string) {
+func (lru *LRU) updateElement(e *list.Element, value string, flags uint32) {
 	e.Value.(*entry).value = value
+	e.Value.(*entry).flags = flags
 	e.Value.(*entry).cas = lru.getNewCasToken()
 	lru.evictList.MoveToFront(e)
 }
