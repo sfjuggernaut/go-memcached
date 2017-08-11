@@ -18,6 +18,11 @@ A memcache server written in Go.
 $ go test ./...
 `
 
+`
+$ go tool vet pkg
+$ go tool vet cmd
+`
+
 ## Update dependencies via [godep](godephttps://github.com/tools/godep)
 
 `
