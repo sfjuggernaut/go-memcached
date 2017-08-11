@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"errors"
 	"log"
+	"sync"
 	"sync/atomic"
 )
 
@@ -15,13 +16,17 @@ var (
 // The `size` parameter is the maximum number of elements that can be stored until
 // eviction occurs. It is not the total number of bytes stored.
 //
-// Not thread safe.
 // Doesn't handle pre-allocation of memory.
 type LRU struct {
 	size      int
 	elements  map[string]*list.Element
 	evictList *list.List
 	casToken  uint64
+
+	// protects access to:
+	// - elements
+	// - evictList
+	sync.RWMutex
 }
 
 // entry holds the information for an entry in the LRU's map.
@@ -39,6 +44,9 @@ func NewLRU(size int) *LRU {
 
 // Add inserts or updates the element for the specified key.
 func (lru *LRU) Add(key, value string, flags uint32) {
+	lru.Lock()
+	defer lru.Unlock()
+
 	if e, ok := lru.elements[key]; ok {
 		lru.updateElement(e, value, flags)
 	} else {
@@ -51,6 +59,9 @@ func (lru *LRU) Add(key, value string, flags uint32) {
 // for the specified key.
 // Returns error if element is not found.
 func (lru *LRU) Get(key string) (string, uint32, uint64, error) {
+	lru.RLock()
+	defer lru.RUnlock()
+
 	e, ok := lru.elements[key]
 	if !ok {
 		return "", 0, 0, ErrCacheMiss
@@ -63,6 +74,9 @@ func (lru *LRU) Get(key string) (string, uint32, uint64, error) {
 // Delete removes the element for the specified key.
 // Returns error if element is not found.
 func (lru *LRU) Delete(key string) error {
+	lru.Lock()
+	defer lru.Unlock()
+
 	e, ok := lru.elements[key]
 	if !ok {
 		return ErrCacheMiss
@@ -74,6 +88,9 @@ func (lru *LRU) Delete(key string) error {
 
 // PrintEvictList is an aid for debugging.
 func (lru *LRU) PrintEvictList() {
+	lru.Lock()
+	defer lru.Unlock()
+
 	log.Println("LRU: evict list")
 	s := "LRU evict list: front->"
 	for e := lru.evictList.Front(); e != nil; e = e.Next() {
