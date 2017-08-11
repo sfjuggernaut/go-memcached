@@ -11,7 +11,7 @@ import (
 
 func TestBasicTextProtocol(t *testing.T) {
 	port := 22222
-	srv := New(port, 100)
+	srv := New(port, 100, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -60,7 +60,7 @@ func TestBasicTextProtocol(t *testing.T) {
 func TestEviction(t *testing.T) {
 	size := 10
 	port := 33333
-	srv := New(port, size)
+	srv := New(port, size, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -103,7 +103,7 @@ func TestEviction(t *testing.T) {
 func TestKeys(t *testing.T) {
 	size := 10
 	port := 44444
-	srv := New(port, size)
+	srv := New(port, size, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -136,7 +136,7 @@ func TestKeys(t *testing.T) {
 func TestCAS(t *testing.T) {
 	size := 10
 	port := 55555
-	srv := New(port, size)
+	srv := New(port, size, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 

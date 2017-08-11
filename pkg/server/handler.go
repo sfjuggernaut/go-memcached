@@ -33,48 +33,88 @@ const (
 	replyStored    = "STORED\r\n"
 )
 
+// Request struct holds the information for a single client request
+type Request struct {
+	cmd       string
+	key       string
+	flags     uint32
+	expTime   int32
+	n         int
+	cas       uint64
+	dataBlock string
+	err       error
+}
+
 // "flags" is 32bits to support memcached 1.2.1
-func getCmdInfo(scanner *bufio.Scanner) (cmd string, key string, flags uint32, expTime int32, n int, cas uint64, err error) {
-	scanner.Scan()
-	line := scanner.Text()
-	if err = scanner.Err(); err != nil {
-		return
-	}
+func parseRequest(line string) (r Request, err error) {
 	if len(line) == 0 {
 		err = errors.New("no command provided")
 		return
 	}
 
 	args := strings.Split(line, " ")
-	cmd = args[0]
+	r.cmd = args[0]
 
-	switch cmd {
+	switch r.cmd {
 	case cmdCas:
-		_, err = fmt.Sscanf(line, "%s%s%d%d%d%d", &cmd, &key, &flags, &expTime, &n, &cas)
+		_, err = fmt.Sscanf(line, "%s%s%d%d%d%d", &r.cmd, &r.key, &r.flags, &r.expTime, &r.n, &r.cas)
 	case cmdDelete, cmdGet, cmdGets:
-		key = args[1]
+		r.key = args[1]
 	case cmdSet:
-		_, err = fmt.Sscanf(line, "%s%s%d%d%d", &cmd, &key, &flags, &expTime, &n)
+		_, err = fmt.Sscanf(line, "%s%s%d%d%d", &r.cmd, &r.key, &r.flags, &r.expTime, &r.n)
 	}
-
 	return
 }
 
-func getValue(scanner *bufio.Scanner, n int) (value string, err error) {
-	scanner.Scan()
-	value = scanner.Text()
-	if err = scanner.Err(); err != nil {
-		return
+// continually consumes input from the connection
+func connReader(scanner *bufio.Scanner, requests chan Request) {
+	var line string
+
+	for {
+		// scan for cmd
+		if valid := scanner.Scan(); !valid {
+			// done scanning for this connection
+			requests <- Request{err: io.EOF}
+			break
+		}
+		line = scanner.Text()
+		if err := scanner.Err(); err != nil {
+			requests <- Request{err: err}
+			continue
+		}
+		request, err := parseRequest(line)
+		if err != nil {
+			request.err = err
+			requests <- request
+			continue
+		}
+
+		// scan for data block if SET or CAS
+		if request.cmd == cmdSet || request.cmd == cmdCas {
+			// wait for data block
+			if valid := scanner.Scan(); !valid {
+				// done scanning for this connection
+				requests <- Request{err: io.EOF}
+				break
+			}
+			data := scanner.Text()
+			if err := scanner.Err(); err != nil {
+				requests <- Request{err: err}
+				continue
+			}
+			if len(data) > request.n {
+				requests <- Request{err: errors.New("data block provided is too long")}
+				continue
+			}
+			request.dataBlock = data
+		}
+		requests <- request
 	}
-	if n != len(value) {
-		err = errors.New("incorrect length")
-		return
-	}
-	return
 }
 
 // Loop waiting for new commands to be received until either the
-// client closes the connection or we pass our deadline.
+// client closes the connection, we pass our deadline, or receive
+// quit signal.
 //
 // Currently only supports the text protocol.
 func (server *Server) handleConnection(conn net.Conn) {
@@ -83,108 +123,107 @@ func (server *Server) handleConnection(conn net.Conn) {
 
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
+	scanner := bufio.NewScanner(reader)
 	var reply string
 
+	requests := make(chan Request)
+	go connReader(scanner, requests)
+
+Loop:
 	for {
-		scanner := bufio.NewScanner(reader)
+		select {
+		case request := <-requests:
+			if request.err == io.EOF {
+				// client closed the connection
+				log.Printf("handleConnection: client (%s) closed the connection\n", conn.RemoteAddr())
+				break Loop
+			}
+			if err, ok := request.err.(net.Error); ok && err.Timeout() {
+				// reached our deadline
+				// XXX this is a hard deadline, doesn't refresh with activity
+				log.Println("handleConnection: reached dedline")
+				break Loop
+			}
+			if request.err != nil {
+				reply = fmt.Sprintf("CLIENT_ERROR %s%s", request.err, endOfLine)
+				writer.WriteString(reply)
+				writer.Flush()
+				continue
+			}
 
-		cmd, key, flags, _, n, cas, err := getCmdInfo(scanner)
-		if err == io.EOF {
-			// client closed the connection
-			log.Printf("handleConnection: client (%s) closed the connection\n", conn.RemoteAddr())
-			break
-		}
-		if err, ok := err.(net.Error); ok && err.Timeout() {
-			// reached our deadline
-			// XXX this is a hard deadline, doesn't refresh with activity
-			log.Println("handleConnection: reached dedline")
-			break
-		}
-		if err != nil {
-			log.Println("handleConnection: error reading cmd info:", err)
-			continue
-		}
+			if request.cmd == cmdQuit {
+				// close connection for the client
+				break Loop
+			}
 
-		if cmd == cmdQuit {
-			// close connection for the client
-			break
-		}
+			// XXX need to support multiple keys
+			if len(request.key) > maxKeyLength {
+				reply = fmt.Sprintf("CLIENT_ERROR key is too long (max is 250 bytes)%s", endOfLine)
+				writer.WriteString(reply)
+				writer.Flush()
+				continue
+			}
 
-		// XXX need to support multiple keys
-		if len(key) > maxKeyLength {
-			reply = "CLIENT_ERROR key is too long (max is 250 bytes)\r\n"
-			writer.WriteString(reply)
-			writer.Flush()
-			continue
-		}
-
-		switch cmd {
-		case cmdCas:
-			_, _, entryCas, err := server.LRU.Get(key)
-			if err == cache.ErrCacheMiss {
-				reply = replyNotFound
-			} else if err != nil {
-				reply = replyNotStored
-			} else if cas != entryCas {
-				reply = replyExists
-			} else {
-				value, err := getValue(scanner, n)
-				if err != nil {
+			switch request.cmd {
+			case cmdCas:
+				_, _, entryCas, err := server.LRU.Get(request.key)
+				if err == cache.ErrCacheMiss {
+					reply = replyNotFound
+				} else if err != nil {
 					reply = replyNotStored
+				} else if request.cas != entryCas {
+					reply = replyExists
 				} else {
-					server.LRU.Add(key, value, flags)
+					server.LRU.Add(request.key, request.dataBlock, request.flags)
 					reply = replyStored
 				}
-			}
-			writer.WriteString(reply)
-			writer.Flush()
+				writer.WriteString(reply)
+				writer.Flush()
 
-		case cmdDelete:
-			err := server.LRU.Delete(key)
-			if err != nil {
-				reply = replyNotFound
-			} else {
-				reply = replyDeleted
-			}
-			writer.WriteString(reply)
-			writer.Flush()
+			case cmdDelete:
+				err := server.LRU.Delete(request.key)
+				if err != nil {
+					reply = replyNotFound
+				} else {
+					reply = replyDeleted
+				}
+				writer.WriteString(reply)
+				writer.Flush()
 
-		case cmdGet:
-			value, flags, _, err := server.LRU.Get(key)
-			if err != nil {
-				reply = replyEnd
-			} else {
-				reply = fmt.Sprintf("VALUE %s %d %d%s%s%s%s", key, flags, len(value), endOfLine, value, endOfLine, replyEnd)
-			}
-			writer.WriteString(reply)
-			writer.Flush()
+			case cmdGet:
+				value, flags, _, err := server.LRU.Get(request.key)
+				if err != nil {
+					reply = replyEnd
+				} else {
+					reply = fmt.Sprintf("VALUE %s %d %d%s%s%s%s", request.key, flags, len(value), endOfLine, value, endOfLine, replyEnd)
+				}
+				writer.WriteString(reply)
+				writer.Flush()
 
-		case cmdGets:
-			value, flags, cas, err := server.LRU.Get(key)
-			if err != nil {
-				reply = replyEnd
-			} else {
-				reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s%s", key, flags, len(value), cas, endOfLine, value, endOfLine, replyEnd)
-			}
-			writer.WriteString(reply)
-			writer.Flush()
+			case cmdGets:
+				value, flags, cas, err := server.LRU.Get(request.key)
+				if err != nil {
+					reply = replyEnd
+				} else {
+					reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s%s", request.key, flags, len(value), cas, endOfLine, value, endOfLine, replyEnd)
+				}
+				writer.WriteString(reply)
+				writer.Flush()
 
-		case cmdSet:
-			value, err := getValue(scanner, n)
-			if err != nil {
-				reply = replyNotStored
-			} else {
-				server.LRU.Add(key, value, flags)
+			case cmdSet:
+				server.LRU.Add(request.key, request.dataBlock, request.flags)
 				reply = replyStored
-			}
-			writer.WriteString(reply)
-			writer.Flush()
+				writer.WriteString(reply)
+				writer.Flush()
 
-		default:
-			log.Println("handleConnection: unsupported cmd:", cmd)
-			reply = replyError
-			writer.WriteString(reply)
-			writer.Flush()
+			default:
+				log.Println("handleConnection: unsupported cmd:", request.cmd)
+				reply = replyError
+				writer.WriteString(reply)
+				writer.Flush()
+			}
+		case <-server.quit:
+			break Loop
 		}
 	}
 }
