@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"errors"
 	"log"
+	"sync/atomic"
 )
 
 var (
@@ -20,12 +21,14 @@ type LRU struct {
 	size      int
 	elements  map[string]*list.Element
 	evictList *list.List
+	casToken  uint64
 }
 
 // entry holds the information for an entry in the LRU's map.
 type entry struct {
 	key   string
 	value string
+	cas   uint64
 }
 
 func NewLRU(size int) *LRU {
@@ -42,16 +45,17 @@ func (lru *LRU) Add(key, value string) {
 	lru.checkSize()
 }
 
-// Get retrieves the value stored in the element for the specified key.
+// Get retrieves the value and cas token stored in the element
+// for the specified key.
 // Returns error if element is not found.
-func (lru *LRU) Get(key string) (string, error) {
+func (lru *LRU) Get(key string) (string, uint64, error) {
 	e, ok := lru.elements[key]
 	if !ok {
-		return "", ErrCacheMiss
+		return "", 0, ErrCacheMiss
 	}
 	lru.refreshElement(e)
 
-	return e.Value.(*entry).value, nil
+	return e.Value.(*entry).value, e.Value.(*entry).cas, nil
 }
 
 // Delete removes the element for the specified key.
@@ -78,26 +82,36 @@ func (lru *LRU) PrintEvictList() {
 	log.Println(s)
 }
 
+// atomically increment and return unique cas token
+func (lru *LRU) getNewCasToken() uint64 {
+	return atomic.AddUint64(&lru.casToken, 1)
+}
+
+// add element to cache and update LRU for this element
 func (lru *LRU) addElement(key, value string) {
-	e := lru.evictList.PushFront(&entry{key: key, value: value})
+	e := lru.evictList.PushFront(&entry{key: key, value: value, cas: lru.getNewCasToken()})
 	lru.elements[key] = e
 }
 
+// update element to cache and update LRU for this element
 func (lru *LRU) updateElement(e *list.Element, value string) {
 	e.Value.(*entry).value = value
+	e.Value.(*entry).cas = lru.getNewCasToken()
 	lru.evictList.MoveToFront(e)
 }
 
+// update LRU for this element
 func (lru *LRU) refreshElement(e *list.Element) {
 	lru.evictList.MoveToFront(e)
 }
 
+// remove element
 func (lru *LRU) deleteElement(e *list.Element) {
 	delete(lru.elements, e.Value.(*entry).key)
 	lru.evictList.Remove(e)
 }
 
-// Remove last element in evictList if we have more then `size` elements cached.
+// remove last element in evictList if we have more then `size` elements cached
 func (lru *LRU) checkSize() {
 	if lru.evictList.Len() > lru.size {
 		e := lru.evictList.Back()

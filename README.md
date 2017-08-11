@@ -6,9 +6,11 @@ A memcache server written in Go.
 - TEXT
 
 ### Operations currently supported
-- GET
-- SET
+- CAS
 - DELETE
+- GET
+- GETS
+- SET
 
 ## Testing
 

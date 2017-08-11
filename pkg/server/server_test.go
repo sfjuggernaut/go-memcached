@@ -128,6 +128,105 @@ func TestKeys(t *testing.T) {
 	}
 }
 
+func TestCAS(t *testing.T) {
+	size := 10
+	port := 55555
+	srv := New(port, size)
+	go srv.Start()
+	defer srv.Stop()
+
+	address := fmt.Sprintf(":%d", port)
+	client := memcache.New(address)
+
+	waitForServerToStart()
+
+	key := "k1"
+	value1 := "wombat"
+	value2 := "zoo"
+
+	//
+	// Test successful case for CAS
+	//
+
+	// set original value
+	item := &memcache.Item{Key: key, Value: []byte(value1)}
+	err := client.Set(item)
+	if err != nil {
+		t.Errorf("Set of key (%s) received unexpected error: %s\n", key, err)
+	}
+
+	// retrieve cas value (note: memcache pkg's Get function actually calls GETS under the covers)
+	item, err = client.Get(key)
+	if err != nil {
+		t.Errorf("Get of key (%s) received unexpected error: %s\n", key, err)
+	}
+
+	// set new value via CAS
+	item.Value = []byte(value2)
+	if err := client.CompareAndSwap(item); err != nil {
+		t.Errorf("CAS of key (%s) received unexpected error: %s\n", key, err)
+	}
+
+	// ensure new value is stored
+	item, err = client.Get(key)
+	if err != nil {
+		t.Errorf("Get of key (%s) received unexpected derror: %s\n", key, err)
+	}
+	if string(item.Value) != value2 {
+		t.Errorf("Expected value of (%s) for key (%s), but received (%s)\n", string(item.Value), key, value2)
+	}
+
+	//
+	// Verify case where key does not exist
+	//
+
+	// first get updated cas value (stored in the returned 'item')
+	item, err = client.Get(key)
+	if err != nil {
+		t.Errorf("Get of key (%s) received unexpected derror: %s\n", key, err)
+	}
+
+	// set key to non-existent value
+	item.Key = "this-key-is-not-stored-on-the-server"
+
+	// verify we get the expected error (NOT_FOUND, which is ErrCacheMiss in memcache pkg)
+	err = client.CompareAndSwap(item)
+	if err == nil {
+		t.Errorf("CAS of key (%s) should have received NOT_FOUND error but got no error\n", key)
+	}
+	if err != memcache.ErrCacheMiss {
+		t.Errorf("Expected error was (%s) but received (%s)\n", memcache.ErrCacheMiss, err)
+	}
+
+	//
+	// Verify case where a second client updates the value in between
+	// the first client's GETS and CAS.
+	//
+
+	// first get updated cas value (stored in the returned 'item')
+	item, err = client.Get(key)
+	if err != nil {
+		t.Errorf("Get of key (%s) received unexpected derror: %s\n", key, err)
+	}
+
+	// have a second client update 'key'
+	client2 := memcache.New(address)
+	item2 := &memcache.Item{Key: key, Value: []byte("client2")}
+	if err := client2.Set(item2); err != nil {
+		t.Errorf("Set of key (%s) received unexpected error: %s\n", key, err)
+	}
+
+	// have first client attempt to CAS with now outdated cas value
+	err = client.CompareAndSwap(item)
+	if err == nil {
+		t.Errorf("CAS of key (%s) should have received EXISTS error but got no error\n", key)
+	}
+	if err != memcache.ErrCASConflict {
+		t.Errorf("Expected error was (%s) but received (%s)\n", memcache.ErrCASConflict, err)
+	}
+
+}
+
 // wait a little bit for the server to be able to receive connections
 func waitForServerToStart() {
 	time.Sleep(50 * time.Millisecond)

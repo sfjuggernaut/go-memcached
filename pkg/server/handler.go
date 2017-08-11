@@ -7,33 +7,48 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
+
+	"github.com/sfjuggernaut/go-memcached/pkg/cache"
 )
 
 const (
+	cmdCas    = "cas"
+	cmdDelete = "delete"
 	cmdGet    = "get"
 	cmdGets   = "gets"
 	cmdSet    = "set"
-	cmdDelete = "delete"
 )
 
 // "flags" is 32bits to support memcached 1.2.1
-func getCmdInfo(scanner *bufio.Scanner) (cmd, key string, flags uint32, expTime int32, n int, err error) {
+func getCmdInfo(scanner *bufio.Scanner) (cmd string, key string, flags uint32, expTime int32, n int, cas uint64, err error) {
 	scanner.Scan()
 	line := scanner.Text()
 	if err = scanner.Err(); err != nil {
 		return
 	}
+	if len(line) == 0 {
+		err = errors.New("no command provided")
+		return
+	}
 
-	_, err = fmt.Sscanf(line, "%s%s", &cmd, &key)
-	if cmd == cmdSet {
+	args := strings.Split(line, " ")
+	cmd = args[0]
+
+	switch cmd {
+	case cmdCas:
+		_, err = fmt.Sscanf(line, "%s%s%d%d%d%d", &cmd, &key, &flags, &expTime, &n, &cas)
+	case cmdDelete, cmdGet, cmdGets:
+		key = args[1]
+	case cmdSet:
 		_, err = fmt.Sscanf(line, "%s%s%d%d%d", &cmd, &key, &flags, &expTime, &n)
 	}
 
 	return
 }
 
-func getSetInfo(scanner *bufio.Scanner, n int) (value string, err error) {
+func getValue(scanner *bufio.Scanner, n int) (value string, err error) {
 	scanner.Scan()
 	value = scanner.Text()
 	if err = scanner.Err(); err != nil {
@@ -60,7 +75,8 @@ func (server *Server) handleConnection(conn net.Conn) {
 
 	for {
 		scanner := bufio.NewScanner(reader)
-		cmd, key, _, _, n, err := getCmdInfo(scanner)
+
+		cmd, key, _, _, n, cas, err := getCmdInfo(scanner)
 		if err == io.EOF {
 			// client closed the connection
 			log.Printf("handleConnection: client (%s) closed the connection\n", conn.RemoteAddr())
@@ -74,9 +90,10 @@ func (server *Server) handleConnection(conn net.Conn) {
 		}
 		if err != nil {
 			log.Println("handleConnection: error reading cmd info:", err)
-			break
+			continue
 		}
 
+		// XXX need to support multiple keys
 		if len(key) > maxKeyLength {
 			reply = "CLIENT_ERROR key is too long (max is 250 bytes)\r\n"
 			writer.WriteString(reply)
@@ -85,20 +102,50 @@ func (server *Server) handleConnection(conn net.Conn) {
 		}
 
 		switch cmd {
-		case cmdGet, cmdGets:
-			value, err := server.LRU.Get(key)
+		case cmdCas:
+			_, entryCas, err := server.LRU.Get(key)
+			if err == cache.ErrCacheMiss {
+				reply = "NOT_FOUND\r\n"
+			} else if err != nil {
+				reply = "NOT_STORED\r\n"
+			} else if cas != entryCas {
+				reply = "EXISTS\r\n"
+			} else {
+				value, err := getValue(scanner, n)
+				if err != nil {
+					reply = "NOT_STORED\r\n"
+				} else {
+					server.LRU.Add(key, value)
+					reply = "STORED\r\n"
+				}
+			}
+			writer.WriteString(reply)
+			writer.Flush()
+
+		case cmdGet:
+			value, _, err := server.LRU.Get(key)
 			if err != nil {
 				reply = "END\r\n"
 			} else {
 				// XXX hard-coding flags to 0 now
-				// XXX not returning cas yet
 				reply = fmt.Sprintf("VALUE %s %d %d\r\n%s\r\nEND\r\n", key, 0, len(value), value)
 			}
 			writer.WriteString(reply)
 			writer.Flush()
 
+		case cmdGets:
+			value, cas, err := server.LRU.Get(key)
+			if err != nil {
+				reply = "END\r\n"
+			} else {
+				// XXX hard-coding flags to 0 now
+				reply = fmt.Sprintf("VALUE %s %d %d %d\r\n%s\r\nEND\r\n", key, 0, len(value), cas, value)
+			}
+			writer.WriteString(reply)
+			writer.Flush()
+
 		case cmdSet:
-			value, err := getSetInfo(scanner, n)
+			value, err := getValue(scanner, n)
 			if err != nil {
 				reply = "NOT_STORED\r\n"
 			} else {
