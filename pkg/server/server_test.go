@@ -11,7 +11,7 @@ import (
 
 func TestBasicTextProtocol(t *testing.T) {
 	port := 22222
-	srv := New(port, 100, 8, 1024)
+	srv := New(port, uint64(1024*1024), 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -58,9 +58,11 @@ func TestBasicTextProtocol(t *testing.T) {
 }
 
 func TestEviction(t *testing.T) {
-	size := 10
+	numEntries := 5
+	// set capacity to one more than 'numEntries' entries worth of bytes
+	capacity := uint64(numEntries*10 + 1)
 	port := 33333
-	srv := New(port, size, 8, 1024)
+	srv := New(port, capacity, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -69,16 +71,20 @@ func TestEviction(t *testing.T) {
 
 	waitForServerToStart()
 
-	// insert up to eviction size number of elements
-	for i := 0; i < size; i++ {
+	// Insert 'numEntries' number of 10 byte entries.
+	// The total should be just under capacity.
+	// Note: key is 1 byte, value is 9 bytes.
+	// Note: assumes 'numEntries' is less than 10 to produce a single byte key.
+	value := "123456789"
+	for i := 0; i < numEntries; i++ {
 		k := strconv.Itoa(i)
-		if err := client.Set(&memcache.Item{Key: k, Value: []byte(k)}); err != nil {
+		if err := client.Set(&memcache.Item{Key: k, Value: []byte(value)}); err != nil {
 			t.Errorf("Set of key (%s) got unexpected error: %s\n", k, err)
 		}
 	}
 
 	// verify all the elements are found
-	for i := 0; i < size; i++ {
+	for i := 0; i < numEntries; i++ {
 		k := strconv.Itoa(i)
 		if _, err := client.Get(k); err != nil {
 			t.Errorf("Get of key (%s) got unexpected error: %s\n", k, err)
@@ -86,8 +92,8 @@ func TestEviction(t *testing.T) {
 	}
 
 	// add one more element which should cause eviction
-	k := strconv.Itoa(size)
-	if err := client.Set(&memcache.Item{Key: k, Value: []byte(k)}); err != nil {
+	k := strconv.Itoa(numEntries)
+	if err := client.Set(&memcache.Item{Key: k, Value: []byte(value)}); err != nil {
 		t.Errorf("Set of key (%s) got unexpected error: %s\n", k, err)
 	}
 
@@ -97,13 +103,12 @@ func TestEviction(t *testing.T) {
 	if err == nil {
 		t.Errorf("Get of key (%s) should have returned a memcache miss\n", k)
 	}
-
 }
 
 func TestKeys(t *testing.T) {
-	size := 10
+	capacity := uint64(1024 * 1024)
 	port := 44444
-	srv := New(port, size, 8, 1024)
+	srv := New(port, capacity, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -134,9 +139,9 @@ func TestKeys(t *testing.T) {
 }
 
 func TestCAS(t *testing.T) {
-	size := 10
+	capacity := uint64(1024 * 1024)
 	port := 55555
-	srv := New(port, size, 8, 1024)
+	srv := New(port, capacity, 8, 1024)
 	go srv.Start()
 	defer srv.Stop()
 

@@ -13,19 +13,32 @@ var (
 )
 
 // This implements a very straight forward LRU using a map and a doubly linked list.
-// The `size` parameter is the maximum number of elements that can be stored until
-// eviction occurs. It is not the total number of bytes stored.
+// The `capacity` parameter is the approximate maximum number of bytes that can be
+// stored until eviction occurs.
+//
+// To keep track of the number of objects instead of bytes, have "entry.size()" always return 1.
 //
 // Doesn't handle pre-allocation of memory.
 type LRU struct {
-	size      int
-	elements  map[string]*list.Element
+	// approximate maximum number of bytes to be stored (never changes)
+	capacity uint64
+
+	// current number of bytes stored
+	size uint64
+
+	// table of entries stored (k: key of entry)
+	elements map[string]*list.Element
+
+	// doubly linked list for entries to be evicted
 	evictList *list.List
-	casToken  uint64
+
+	// unique token counter for inserts and updates
+	casToken uint64
 
 	// protects access to:
 	// - elements
 	// - evictList
+	// - size
 	sync.RWMutex
 }
 
@@ -37,9 +50,14 @@ type entry struct {
 	cas   uint64
 }
 
+// size returns an approximate count of bytes for an entry
+func (e *entry) size() uint64 {
+	return uint64(len(e.key) + len(e.value))
+}
+
 // NewLRU returns a new LRU object.
-func NewLRU(size int) *LRU {
-	return &LRU{size: size, evictList: list.New(), elements: make(map[string]*list.Element)}
+func NewLRU(capacity uint64) *LRU {
+	return &LRU{capacity: capacity, evictList: list.New(), elements: make(map[string]*list.Element)}
 }
 
 // Add inserts or updates the element for the specified key.
@@ -52,7 +70,7 @@ func (lru *LRU) Add(key, value string, flags uint32) {
 	} else {
 		lru.addElement(key, value, flags)
 	}
-	lru.checkSize()
+	lru.checkCapacity()
 }
 
 // Get retrieves the value and cas token stored in the element
@@ -110,14 +128,17 @@ func (lru *LRU) getNewCasToken() uint64 {
 func (lru *LRU) addElement(key, value string, flags uint32) {
 	e := lru.evictList.PushFront(&entry{key: key, value: value, flags: flags, cas: lru.getNewCasToken()})
 	lru.elements[key] = e
+	lru.size += e.Value.(*entry).size()
 }
 
 // update element to cache and update LRU for this element
 func (lru *LRU) updateElement(e *list.Element, value string, flags uint32) {
+	oldSize := e.Value.(*entry).size()
 	e.Value.(*entry).value = value
 	e.Value.(*entry).flags = flags
 	e.Value.(*entry).cas = lru.getNewCasToken()
 	lru.evictList.MoveToFront(e)
+	lru.size += e.Value.(*entry).size() - oldSize
 }
 
 // update LRU for this element
@@ -129,12 +150,17 @@ func (lru *LRU) refreshElement(e *list.Element) {
 func (lru *LRU) deleteElement(e *list.Element) {
 	delete(lru.elements, e.Value.(*entry).key)
 	lru.evictList.Remove(e)
+	lru.size -= e.Value.(*entry).size()
 }
 
-// remove last element in evictList if we have more then `size` elements cached
-func (lru *LRU) checkSize() {
-	if lru.evictList.Len() > lru.size {
+// remove last element in evictList if we have more than 'capacity' bytes
+func (lru *LRU) checkCapacity() {
+	for lru.size > lru.capacity {
 		e := lru.evictList.Back()
+		if e == nil {
+			log.Println("want to evict but found nothing on the evict list, this should never happen")
+			break
+		}
 		lru.deleteElement(e)
 	}
 }

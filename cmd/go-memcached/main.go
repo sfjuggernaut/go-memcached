@@ -7,13 +7,13 @@ import (
 )
 
 var port = flag.Int("port", 11211, "port to run memcached server")
-var size = flag.Int("size", 1024, "maximum number of entries to store")
+var capacity = flag.Uint64("capacity", 1024*1024*64, "maximum number of bytes to store (memory limit of server)")
 var numWorkers = flag.Int("num-workers", 8, "number of workers to process incoming connections")
 var maxNumConnections = flag.Int("max-num-connections", 1024, "maximum number of simultaneous connections")
 
 func main() {
 	flag.Parse()
 
-	server := server.New(*port, *size, *numWorkers, *maxNumConnections)
+	server := server.New(*port, *capacity, *numWorkers, *maxNumConnections)
 	server.Start()
 }

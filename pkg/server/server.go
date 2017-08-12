@@ -29,9 +29,15 @@ type Server struct {
 	wg                sync.WaitGroup
 }
 
-func New(port, size, numWorkers, maxNumConnections int) *Server {
-	lru := cache.NewLRU(size)
-	return &Server{port: port, numWorkers: numWorkers, maxNumConnections: maxNumConnections, LRU: lru, wg: sync.WaitGroup{}, quit: make(chan struct{})}
+func New(port int, capacity uint64, numWorkers, maxNumConnections int) *Server {
+	return &Server{
+		port:              port,
+		numWorkers:        numWorkers,
+		maxNumConnections: maxNumConnections,
+		LRU:               cache.NewLRU(capacity),
+		wg:                sync.WaitGroup{},
+		quit:              make(chan struct{}),
+	}
 }
 
 func (server *Server) connectionWorker(conns chan net.Conn) {
