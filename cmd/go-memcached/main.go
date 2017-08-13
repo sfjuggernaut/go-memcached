@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/sfjuggernaut/go-memcached/pkg/cache"
 	"github.com/sfjuggernaut/go-memcached/pkg/server"
 )
 
@@ -14,6 +15,7 @@ var maxNumConnections = flag.Int("max-num-connections", 1024, "maximum number of
 func main() {
 	flag.Parse()
 
-	server := server.New(*port, *capacity, *numWorkers, *maxNumConnections)
+	cache := cache.NewLRU(*capacity)
+	server := server.New(*port, *numWorkers, *maxNumConnections, cache)
 	server.Start()
 }

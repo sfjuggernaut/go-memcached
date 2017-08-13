@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/sfjuggernaut/go-memcached/pkg/cache"
 )
 
 func TestBasicTextProtocol(t *testing.T) {
 	port := 22222
-	srv := New(port, uint64(1024*1024), 8, 1024)
+	cache := cache.NewLRU(1024 * 1024)
+	srv := New(port, 8, 1024, cache)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -61,8 +63,10 @@ func TestEviction(t *testing.T) {
 	numEntries := 5
 	// set capacity to one more than 'numEntries' entries worth of bytes
 	capacity := uint64(numEntries*10 + 1)
+	cache := cache.NewLRU(capacity)
+
 	port := 33333
-	srv := New(port, capacity, 8, 1024)
+	srv := New(port, 8, 1024, cache)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -106,9 +110,9 @@ func TestEviction(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	capacity := uint64(1024 * 1024)
+	cache := cache.NewLRU(1024 * 1024)
 	port := 44444
-	srv := New(port, capacity, 8, 1024)
+	srv := New(port, 8, 1024, cache)
 	go srv.Start()
 	defer srv.Stop()
 
@@ -139,9 +143,9 @@ func TestKeys(t *testing.T) {
 }
 
 func TestCAS(t *testing.T) {
-	capacity := uint64(1024 * 1024)
+	cache := cache.NewLRU(1024 * 1024)
 	port := 55555
-	srv := New(port, capacity, 8, 1024)
+	srv := New(port, 8, 1024, cache)
 	go srv.Start()
 	defer srv.Stop()
 

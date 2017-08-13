@@ -24,17 +24,17 @@ type Server struct {
 	port              int
 	numWorkers        int
 	maxNumConnections int
-	LRU               *cache.LRU
+	Cache             cache.Cache
 	quit              chan struct{}
 	wg                sync.WaitGroup
 }
 
-func New(port int, capacity uint64, numWorkers, maxNumConnections int) *Server {
+func New(port int, numWorkers, maxNumConnections int, cache cache.Cache) *Server {
 	return &Server{
 		port:              port,
 		numWorkers:        numWorkers,
 		maxNumConnections: maxNumConnections,
-		LRU:               cache.NewLRU(capacity),
+		Cache:             cache,
 		wg:                sync.WaitGroup{},
 		quit:              make(chan struct{}),
 	}

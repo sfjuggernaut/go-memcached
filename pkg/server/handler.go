@@ -166,7 +166,7 @@ Loop:
 
 			switch request.cmd {
 			case cmdCas:
-				_, _, entryCas, err := server.LRU.Get(request.key)
+				_, _, entryCas, err := server.Cache.Get(request.key)
 				if err == cache.ErrCacheMiss {
 					reply = replyNotFound
 				} else if err != nil {
@@ -174,14 +174,14 @@ Loop:
 				} else if request.cas != entryCas {
 					reply = replyExists
 				} else {
-					server.LRU.Add(request.key, request.dataBlock, request.flags)
+					server.Cache.Add(request.key, request.dataBlock, request.flags)
 					reply = replyStored
 				}
 				writer.WriteString(reply)
 				writer.Flush()
 
 			case cmdDelete:
-				err := server.LRU.Delete(request.key)
+				err := server.Cache.Delete(request.key)
 				if err != nil {
 					reply = replyNotFound
 				} else {
@@ -191,7 +191,7 @@ Loop:
 				writer.Flush()
 
 			case cmdGet:
-				value, flags, _, err := server.LRU.Get(request.key)
+				value, flags, _, err := server.Cache.Get(request.key)
 				if err != nil {
 					reply = replyEnd
 				} else {
@@ -201,7 +201,7 @@ Loop:
 				writer.Flush()
 
 			case cmdGets:
-				value, flags, cas, err := server.LRU.Get(request.key)
+				value, flags, cas, err := server.Cache.Get(request.key)
 				if err != nil {
 					reply = replyEnd
 				} else {
@@ -211,7 +211,7 @@ Loop:
 				writer.Flush()
 
 			case cmdSet:
-				server.LRU.Add(request.key, request.dataBlock, request.flags)
+				server.Cache.Add(request.key, request.dataBlock, request.flags)
 				reply = replyStored
 				writer.WriteString(reply)
 				writer.Flush()
