@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/sfjuggernaut/go-memcached/pkg/cache"
 )
@@ -22,16 +24,20 @@ const (
 type Server struct {
 	listener          net.Listener
 	port              int
+	adminHttpPort     int
 	numWorkers        int
 	maxNumConnections int
 	Cache             cache.Cache
+	adminHttpServer   *http.Server
+	startTime         time.Time
 	quit              chan struct{}
 	wg                sync.WaitGroup
 }
 
-func New(port int, numWorkers, maxNumConnections int, cache cache.Cache) *Server {
+func New(port, adminHttpPort, numWorkers, maxNumConnections int, cache cache.Cache) *Server {
 	return &Server{
 		port:              port,
+		adminHttpPort:     adminHttpPort,
 		numWorkers:        numWorkers,
 		maxNumConnections: maxNumConnections,
 		Cache:             cache,
@@ -55,6 +61,9 @@ Loop:
 }
 
 func (s *Server) Start() {
+	s.startTime = time.Now().UTC()
+	s.adminHttpServerStart(s.adminHttpPort)
+
 	address := fmt.Sprintf(":%d", s.port)
 	l, err := net.Listen("tcp", address)
 	if err != nil {
@@ -90,5 +99,7 @@ func (s *Server) Stop() {
 	s.listener.Close()
 	// wait for workers to cleanly shutdown
 	close(s.quit)
+	// shutdown admin http server
+	s.adminHttpServerStop()
 	s.wg.Wait()
 }

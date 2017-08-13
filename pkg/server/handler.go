@@ -179,6 +179,7 @@ Loop:
 				}
 				writer.WriteString(reply)
 				writer.Flush()
+				StatsNumCas.Add(1)
 
 			case cmdDelete:
 				err := server.Cache.Delete(request.key)
@@ -189,6 +190,7 @@ Loop:
 				}
 				writer.WriteString(reply)
 				writer.Flush()
+				StatsNumDelete.Add(1)
 
 			case cmdGet:
 				value, flags, _, err := server.Cache.Get(request.key)
@@ -199,6 +201,7 @@ Loop:
 				}
 				writer.WriteString(reply)
 				writer.Flush()
+				StatsNumGet.Add(1)
 
 			case cmdGets:
 				value, flags, cas, err := server.Cache.Get(request.key)
@@ -209,18 +212,21 @@ Loop:
 				}
 				writer.WriteString(reply)
 				writer.Flush()
+				StatsNumGets.Add(1)
 
 			case cmdSet:
 				server.Cache.Add(request.key, request.dataBlock, request.flags)
 				reply = replyStored
 				writer.WriteString(reply)
 				writer.Flush()
+				StatsNumSet.Add(1)
 
 			default:
 				log.Println("handleConnection: unsupported cmd:", request.cmd)
 				reply = replyError
 				writer.WriteString(reply)
 				writer.Flush()
+				StatsErrNumUnsupportedCmds.Add(1)
 			}
 		case <-server.quit:
 			break Loop
