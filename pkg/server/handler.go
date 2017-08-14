@@ -20,6 +20,7 @@ const (
 	cmdGets   = "gets"
 	cmdQuit   = "quit"
 	cmdSet    = "set"
+	cmdHire   = "hireeric?"
 )
 
 const (
@@ -31,6 +32,7 @@ const (
 	replyNotFound  = "NOT_FOUND\r\n"
 	replyNotStored = "NOT_STORED\r\n"
 	replyStored    = "STORED\r\n"
+	replyYes       = "totes\r\n"
 )
 
 var (
@@ -241,6 +243,10 @@ Loop:
 				writer.WriteString(reply)
 				writer.Flush()
 				StatsNumSet.Add(1)
+
+			case cmdHire:
+				writer.WriteString(replyYes)
+				writer.Flush()
 
 			default:
 				log.Println("handleConnection: unsupported cmd:", request.cmd)
