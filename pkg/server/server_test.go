@@ -57,6 +57,30 @@ func TestBasicTextProtocol(t *testing.T) {
 	if err == nil {
 		t.Errorf("Get of key (%s) expected cache miss, but go no error\n", key)
 	}
+
+	// get with multiple keys
+	keys := []string{"wombat1", "wombat2"}
+	values := []string{"v1", "v2"}
+	for i := range keys {
+		item := &memcache.Item{Key: keys[i], Value: []byte(values[i]), Flags: flags}
+		if err := client.Set(item); err != nil {
+			t.Errorf("Set of key (%s) got unexpected error: %s\n", keys[i], err)
+		}
+	}
+
+	items, err := client.GetMulti(keys)
+	if err != nil {
+		t.Errorf("GetMulti got unexpected error: %s\n", err)
+	}
+	for i, k := range keys {
+		if item, ok := items[k]; !ok {
+			t.Errorf("GetMulti did not return key (%s)\n", k)
+		} else {
+			if string(item.Value) != values[i] {
+				t.Errorf("GetMulti for key (%s) received value (%s) but expected (%s)\n", k, string(item.Value), values[i])
+			}
+		}
+	}
 }
 
 func TestEviction(t *testing.T) {

@@ -33,10 +33,15 @@ const (
 	replyStored    = "STORED\r\n"
 )
 
+var (
+	ErrInsufficientArgs = errors.New("Insufficient args")
+)
+
 // Request stores the information for a single client request
 type Request struct {
-	cmd       string
-	key       string
+	cmd  string
+	keys []string
+	// flags is 32bits to support memcached 1.2.1
 	flags     uint32
 	expTime   int32
 	n         int
@@ -45,7 +50,7 @@ type Request struct {
 	err       error
 }
 
-// "flags" is 32bits to support memcached 1.2.1
+// parseRequest verifies and parses the incoming request
 func parseRequest(line string) (r Request, err error) {
 	if len(line) == 0 {
 		err = errors.New("no command provided")
@@ -57,11 +62,23 @@ func parseRequest(line string) (r Request, err error) {
 
 	switch r.cmd {
 	case cmdCas:
-		_, err = fmt.Sscanf(line, "%s%s%d%d%d%d", &r.cmd, &r.key, &r.flags, &r.expTime, &r.n, &r.cas)
-	case cmdDelete, cmdGet, cmdGets:
-		r.key = args[1]
+		r.keys = make([]string, 1)
+		_, err = fmt.Sscanf(line, "%s%s%d%d%d%d", &r.cmd, &r.keys[0], &r.flags, &r.expTime, &r.n, &r.cas)
+	case cmdDelete:
+		if len(args) < 2 {
+			err = ErrInsufficientArgs
+			return
+		}
+		r.keys = make([]string, 1)
+		r.keys[0] = args[1]
+	case cmdGet, cmdGets:
+		r.keys = make([]string, len(args)-1)
+		for i := 0; i < len(args)-1; i++ {
+			r.keys[i] = args[i+1]
+		}
 	case cmdSet:
-		_, err = fmt.Sscanf(line, "%s%s%d%d%d", &r.cmd, &r.key, &r.flags, &r.expTime, &r.n)
+		r.keys = make([]string, 1)
+		_, err = fmt.Sscanf(line, "%s%s%d%d%d", &r.cmd, &r.keys[0], &r.flags, &r.expTime, &r.n)
 	}
 	return
 }
@@ -157,16 +174,18 @@ Loop:
 			}
 
 			// XXX need to support multiple keys
-			if len(request.key) > maxKeyLength {
-				reply = fmt.Sprintf("CLIENT_ERROR key is too long (max is 250 bytes)%s", endOfLine)
-				writer.WriteString(reply)
-				writer.Flush()
-				continue
+			for i := 0; i < len(request.keys); i++ {
+				if len(request.keys[i]) > maxKeyLength {
+					reply = fmt.Sprintf("CLIENT_ERROR key is too long (max is 250 bytes)%s", endOfLine)
+					writer.WriteString(reply)
+					writer.Flush()
+					continue
+				}
 			}
 
 			switch request.cmd {
 			case cmdCas:
-				_, _, entryCas, err := server.Cache.Get(request.key)
+				_, _, entryCas, err := server.Cache.Get(request.keys[0])
 				if err == cache.ErrCacheMiss {
 					reply = replyNotFound
 				} else if err != nil {
@@ -174,7 +193,7 @@ Loop:
 				} else if request.cas != entryCas {
 					reply = replyExists
 				} else {
-					server.Cache.Add(request.key, request.dataBlock, request.flags)
+					server.Cache.Add(request.keys[0], request.dataBlock, request.flags)
 					reply = replyStored
 				}
 				writer.WriteString(reply)
@@ -182,7 +201,7 @@ Loop:
 				StatsNumCas.Add(1)
 
 			case cmdDelete:
-				err := server.Cache.Delete(request.key)
+				err := server.Cache.Delete(request.keys[0])
 				if err != nil {
 					reply = replyNotFound
 				} else {
@@ -193,29 +212,31 @@ Loop:
 				StatsNumDelete.Add(1)
 
 			case cmdGet:
-				value, flags, _, err := server.Cache.Get(request.key)
-				if err != nil {
-					reply = replyEnd
-				} else {
-					reply = fmt.Sprintf("VALUE %s %d %d%s%s%s%s", request.key, flags, len(value), endOfLine, value, endOfLine, replyEnd)
+				for _, key := range request.keys {
+					value, flags, _, err := server.Cache.Get(key)
+					if err == nil {
+						reply = fmt.Sprintf("VALUE %s %d %d%s%s%s", key, flags, len(value), endOfLine, value, endOfLine)
+						writer.WriteString(reply)
+					}
 				}
-				writer.WriteString(reply)
+				writer.WriteString(replyEnd)
 				writer.Flush()
 				StatsNumGet.Add(1)
 
 			case cmdGets:
-				value, flags, cas, err := server.Cache.Get(request.key)
-				if err != nil {
-					reply = replyEnd
-				} else {
-					reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s%s", request.key, flags, len(value), cas, endOfLine, value, endOfLine, replyEnd)
+				for _, key := range request.keys {
+					value, flags, cas, err := server.Cache.Get(key)
+					if err == nil {
+						reply = fmt.Sprintf("VALUE %s %d %d %d%s%s%s", key, flags, len(value), cas, endOfLine, value, endOfLine)
+						writer.WriteString(reply)
+					}
 				}
-				writer.WriteString(reply)
+				writer.WriteString(replyEnd)
 				writer.Flush()
 				StatsNumGets.Add(1)
 
 			case cmdSet:
-				server.Cache.Add(request.key, request.dataBlock, request.flags)
+				server.Cache.Add(request.keys[0], request.dataBlock, request.flags)
 				reply = replyStored
 				writer.WriteString(reply)
 				writer.Flush()
