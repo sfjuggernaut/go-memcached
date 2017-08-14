@@ -12,7 +12,7 @@ import (
 
 func TestBasicTextProtocol(t *testing.T) {
 	port := 22222
-	cache := cache.NewLRU(1024 * 1024)
+	cache := cache.NewLRU(1024*1024, 16)
 	srv := New(port, 8000, 8, 1024, cache)
 	go srv.Start()
 	defer srv.Stop()
@@ -63,7 +63,7 @@ func TestEviction(t *testing.T) {
 	numEntries := 5
 	// set capacity to one more than 'numEntries' entries worth of bytes
 	capacity := uint64(numEntries*10 + 1)
-	cache := cache.NewLRU(capacity)
+	cache := cache.NewLRU(capacity, 1)
 
 	port := 33333
 	srv := New(port, 8001, 8, 1024, cache)
@@ -110,7 +110,7 @@ func TestEviction(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	cache := cache.NewLRU(1024 * 1024)
+	cache := cache.NewLRU(1024*1024, 16)
 	port := 44444
 	srv := New(port, 8002, 8, 1024, cache)
 	go srv.Start()
@@ -143,7 +143,7 @@ func TestKeys(t *testing.T) {
 }
 
 func TestCAS(t *testing.T) {
-	cache := cache.NewLRU(1024 * 1024)
+	cache := cache.NewLRU(1024*1024, 16)
 	port := 55555
 	srv := New(port, 8003, 8, 1024, cache)
 	go srv.Start()

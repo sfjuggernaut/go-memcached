@@ -16,9 +16,9 @@ const (
 )
 
 // Server is the root structure of the memcached server.
-// numWorkers is the number of goroutines to spin up to concurrently handle
+// 'numWorkers' is the number of goroutines to spin up to concurrently handle
 // incoming connections.
-// maxNumConnections is the buffer size of the channel to hold incoming
+// 'maxNumConnections' is the buffer size of the channel to hold incoming
 // connections. If the buffer gets full, then the server will block accepting
 // new connections.
 type Server struct {
@@ -34,6 +34,7 @@ type Server struct {
 	wg                sync.WaitGroup
 }
 
+// New returns a new Server.
 func New(port, adminHttpPort, numWorkers, maxNumConnections int, cache cache.Cache) *Server {
 	return &Server{
 		port:              port,
@@ -60,6 +61,8 @@ Loop:
 	}
 }
 
+// Start function starts listing for incoming TCP requests
+// and also starts up an admin HTTP server.
 func (s *Server) Start() {
 	s.startTime = time.Now().UTC()
 	s.adminHttpServerStart(s.adminHttpPort)
@@ -84,7 +87,7 @@ func (s *Server) Start() {
 		// wait for a new connection
 		conn, err := l.Accept()
 		if err != nil {
-			log.Print("Server: accept error:", err)
+			// log.Print("Server: accept error:", err)
 			continue
 		}
 		if conn == nil {
@@ -95,6 +98,7 @@ func (s *Server) Start() {
 	}
 }
 
+// Stop cleanly shutdowns the Server (and its dependencies).
 func (s *Server) Stop() {
 	s.listener.Close()
 	// wait for workers to cleanly shutdown

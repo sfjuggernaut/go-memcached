@@ -33,7 +33,7 @@ const (
 	replyStored    = "STORED\r\n"
 )
 
-// Request struct holds the information for a single client request
+// Request stores the information for a single client request
 type Request struct {
 	cmd       string
 	key       string
