@@ -84,3 +84,14 @@ To run newly created binary:
 ```
 $ ~/Code/go/bin/go-memcached
 ```
+
+## Profiling
+
+Endpoints for (profiling)[https://blog.golang.org/profiling-go-programs] via (pprof)[https://golang.org/pkg/net/http/pprof/] are exposed via the admin HTTP interface at `/debug/profile/`.
+
+Examples:
+
+```
+$ go tool pprof http://localhost:8989/debug/pprof/heap
+$ go tool pprof http://localhost:8989/debug/pprof/heap
+```

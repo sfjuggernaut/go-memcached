@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"time"
 )
 
@@ -19,6 +20,10 @@ const (
 func (s *Server) adminHttpServerStart(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats", s.getStatsHandler)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 
 	address := fmt.Sprintf(":%d", port)
 	httpServer := &http.Server{Addr: address, Handler: mux}
