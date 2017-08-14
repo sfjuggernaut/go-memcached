@@ -12,6 +12,22 @@ A memcache server written in Go.
 - GETS
 - SET
 
+## Documentation
+
+Use [godoc](http://godoc.org/golang.org/x/tools/cmd/godoc):
+
+`
+$ godoc -http=:8080
+`
+
+Then navigate to:
+
+```
+http://localhost:8080/pkg/github.com/sfjuggernaut/go-memcached/
+http://localhost:8080/pkg/github.com/sfjuggernaut/go-memcached/pkg/cache/
+http://localhost:8080/pkg/github.com/sfjuggernaut/go-memcached/pkg/server
+```
+
 ## Testing
 
 `
@@ -21,6 +37,11 @@ $ go test ./...
 `
 $ go tool vet pkg
 $ go tool vet cmd
+`
+
+`
+$ go test -race pkg/server/*.go
+$ go test -race pkg/cache/*.go
 `
 
 ## Update dependencies via [godep](godephttps://github.com/tools/godep)
