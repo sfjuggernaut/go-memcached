@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/sfjuggernaut/go-memcached/pkg/cache"
 )
@@ -137,7 +136,6 @@ func connReader(scanner *bufio.Scanner, requests chan Request) {
 //
 // Currently only supports the text protocol.
 func (server *Server) handleConnection(conn net.Conn) {
-	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -155,12 +153,6 @@ Loop:
 			if request.err == io.EOF {
 				// client closed the connection
 				log.Printf("handleConnection: client (%s) closed the connection\n", conn.RemoteAddr())
-				break Loop
-			}
-			if err, ok := request.err.(net.Error); ok && err.Timeout() {
-				// reached our deadline
-				// XXX this is a hard deadline, doesn't refresh with activity
-				log.Println("handleConnection: reached dedline")
 				break Loop
 			}
 			if request.err != nil {
