@@ -108,8 +108,8 @@ func (lru *LRU) Add(key, value string, flags uint32) {
 func (lru *LRU) Get(key string) (string, uint32, uint64, error) {
 	bucket := lru.buckets[lru.hash(key)%lru.numBuckets]
 
-	bucket.RLock()
-	defer bucket.RUnlock()
+	bucket.Lock()
+	defer bucket.Unlock()
 
 	e, ok := bucket.elements[key]
 	if !ok {
