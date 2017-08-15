@@ -1,13 +1,13 @@
 # Performance
 
-#### Limits
+### Limits
 
 There is only one goroutine to accept new client connections. If new connections are continually coming and leaving, this could be a bottleneck. Persistent connections are better.
 
 Each TCP connection does have some memory overhead. Take this into consideration when planning number of connections to the server as well as how much memory is dedicated to the server.
 
 
-#### Simple workload test
+### Simple workload test
 
 The short: in my **very** **simple** scenario I found my solution to handle roughly ~2/3 the queries per second (QPS) of stock memcached server: ~200k QPS vs ~310k QPS.
 
@@ -41,17 +41,17 @@ Areas to examine and potentially improve is actually everything :) If it is not 
 
 The major pieces to measure are: consuming incoming connections, parsing requests, caching, LRU, and stats gathering.
 
-#### Consuming connections
+### Consuming connections
 
 The buffered channel with workers to process incoming connections should scale reasonably well. goroutines are fairly lightweight. The `num-workers` param allows one to control how many workers are created (each being a separate goroutine). Each worker is responsible for handling a single client connection at a time.
 
-#### Parsing requests
+### Parsing requests
 
 There are likely some inefficiences with regards to allocation of memory to validate and parse the incoming requests (see `connReader()` and `parseRequest()`). In reality, we should just have to copy the data once (from the network connection buffer to memcached's buffers). It is also  worthwhile to examine using the binary protocol over the text protocol.
 
 As an example, each worker could up-front allocate a `Request` struct and re-use that object instead of re-creating a new one for each request the client issues. This is somewhat dependent on the workload.
 
-#### Caching and LRU
+### Caching and LRU
 
 
 The current cache and LRU implementation is pretty straight forward - an array of buckets, each bucket with a hash map for storing (key, value) tuples and an evict list implemented as a doubly linked list . A lock on the bucket is required to update the evict list. This means that locking (RW) is necessary on all types of requests for the entire bucket - even Get calls (ie: reads).
@@ -64,18 +64,18 @@ A longer term solution might be to examine and implement the slab allocator that
 
 Lastly, we should look at the distribution of entries to buckets and explore other hashing techniques. Current solution uses Go's built-in FNV-1a hashing algorithm, but others (such as murmur3) should be explored.
 
-#### Stats
+### Stats
 
 Perhaps not a problem, but we should ensure that storing and retrieving of stats doesn't induce performance hits.
 
 
-#### More rigorous testing
+### More rigorous testing
 
 I've done a decent job at testing, but more heavy duty testing is necessary to consider the solution stable and reliable. Also code reviews.
 
 # Monitoring and Management
 
-#### Monitoring and Alerting
+### Monitoring and Alerting
 
 A json endpoint (`/stats`) is exposed over the admin HTTP interface. This endpoint returns the current stats of the live running process. More stats can be easily added via `stats.go`.
 
@@ -83,7 +83,7 @@ It should be easy to have stats consumers (such as data dog, in-house solution, 
 
 Alerting can then be built on top of the graphs / dashboards.
 
-#### Management
+### Management
 The available params to adjust are:
 - port : port to run memcached server
 - admin-http-port : port to run admin HTTP server (for stats and profiling)
@@ -94,7 +94,7 @@ The available params to adjust are:
 
 It should be easy to build and run this code as a binary and manage via something like `runit`.
 
-#### Profiling
+### Profiling
 
 Use [pprof](https://golang.org/pkg/net/http/pprof/) endpoints to examine CPU usage and heap allocations. See `adminHttpServerStart()` for available routes.
 
@@ -107,16 +107,16 @@ Inspect and make better!
 
 # Testing
 
-#### Unit
+### Unit
 There are unit tests in `server_test.go` and `cache_test.go`.
 
-#### Manual
+### Manual
 I did some simple manually testing with `telnet` and bradfitz's [client](github.com/bradfitz/gomemcache/memcache) to give some faith of compatability.
 
-#### Stress
+### Stress
 For more instense testing, I ran workload generators [mutilate](https://github.com/leverich/mutilate) and [twemperf](https://github.com/twitter/twemperf) to not only obtain perf numbers but give some reasonable confidence that the implemenation is stable.
 
-#### Future
+### Future
 More testing should be done with different workloads (instead of the main one I used via `mutilate`). A variance on R vs W %, different data block sizes (small, large, mixed), large number of clients, ensuring heavy eviction would be good examples.
 
 No testing was done outside standard ASCII values.
