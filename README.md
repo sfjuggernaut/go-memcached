@@ -2,6 +2,9 @@
 
 A memcache server written in Go.
 
+### Interfaces currently supported
+- TCP
+
 ### Protocols currently supported
 - TEXT
 
@@ -87,7 +90,7 @@ $ ~/Code/go/bin/go-memcached
 
 ## Profiling
 
-Endpoints for (profiling)[https://blog.golang.org/profiling-go-programs] via (pprof)[https://golang.org/pkg/net/http/pprof/] are exposed via the admin HTTP interface at `/debug/profile/`.
+Endpoints for [profiling](https://blog.golang.org/profiling-go-programs) via [pprof](https://golang.org/pkg/net/http/pprof/) are exposed via the admin HTTP interface at `/debug/profile/`.
 
 Examples:
 
