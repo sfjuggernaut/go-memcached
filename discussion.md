@@ -120,12 +120,3 @@ For more instense testing, I ran workload generators [mutilate](https://github.c
 More testing should be done with different workloads (instead of the main one I used via `mutilate`). A variance on R vs W %, different data block sizes (small, large, mixed), large number of clients, ensuring heavy eviction would be good examples.
 
 No testing was done outside standard ASCII values.
-
-
-# Build and Run
-
-Installation and running instructions are in the README. If those are insufficient or not clear, let me know.
-
-
-
-Oh yeah, this was actually a fun exercise!
